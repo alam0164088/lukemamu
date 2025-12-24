@@ -1,3 +1,5 @@
+# authentication/views.py
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -237,37 +239,53 @@ class VerifyOTPView(APIView):
 
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data['email']
-            otp = serializer.validated_data['otp']
-            user = User.objects.filter(email=email).first()
-            if not user:
-                return Response({"detail": "Invalid OTP or email."}, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        email = serializer.validated_data['email']
+        otp = serializer.validated_data['otp']
+        purpose = request.data.get('purpose')  # None হলেও চলবে
+
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({"detail": "Invalid request."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Default: email_verification ধরে নিচ্ছি যদি purpose না দেওয়া হয়
+        if purpose is None:
+            purpose = 'email_verification'
+
+        if purpose == 'email_verification':
+            if user.is_email_verified:
+                return Response({"detail": "Email already verified."}, status=status.HTTP_400_BAD_REQUEST)
             if user.email_verification_code == otp and user.email_verification_code_expires_at >= timezone.now():
                 user.is_email_verified = True
                 user.is_active = True
                 user.email_verification_code = None
                 user.email_verification_code_expires_at = None
                 user.save()
-                logger.info(f"Email verified for: {user.email}")
                 return Response({"message": "Email verified successfully."}, status=status.HTTP_200_OK)
 
-            elif user.password_reset_code == otp and user.password_reset_code_expires_at >= timezone.now():
+        elif purpose == 'password_reset':
+            if user.password_reset_code == otp and user.password_reset_code_expires_at >= timezone.now():
                 reset_token = str(uuid4())
                 PasswordResetSession.objects.create(user=user, token=reset_token)
                 user.password_reset_code = None
                 user.password_reset_code_expires_at = None
                 user.save()
-                logger.info(f"Password reset OTP verified for: {user.email}")
                 return Response({
-                    "message": "OTP verified. You may now reset your password.",
+                    "message": "OTP verified.",
                     "reset_token": reset_token
                 }, status=status.HTTP_200_OK)
 
-            else:
-                return Response({"detail": "OTP expired or invalid."}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        elif purpose == 'two_factor':
+            if user.email_verification_code == otp and user.email_verification_code_expires_at >= timezone.now():
+                user.email_verification_code = None
+                user.email_verification_code_expires_at = None
+                user.save()
+                return Response({"message": "2FA verified."}, status=status.HTTP_200_OK)
+
+        return Response({"detail": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
+
 
 # 
 class LoginView(APIView):

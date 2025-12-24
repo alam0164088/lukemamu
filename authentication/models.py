@@ -1,27 +1,51 @@
+import uuid
+import random
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+from django.conf import settings
 from datetime import timedelta
-import uuid
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 class User(AbstractUser):
     ROLE_CHOICES = (
+        ('user', 'User'),          # Client
+        ('attorney', 'Attorney'),  # Lawyer
         ('admin', 'Admin'),
-        ('user', 'User'),
     )
+
     email = models.EmailField(_('email address'), unique=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
+
+    # Common fields
+    full_name = models.CharField(max_length=255, blank=True)
+
+    # User (Client) specific
+    location = models.CharField(max_length=255, blank=True)
+    preferred_legal_area = models.CharField(max_length=255, blank=True)
+
+    # Attorney specific
+    designation = models.CharField(max_length=255, blank=True)  # e.g. Advocate, Barrister
+    area_of_law = models.CharField(max_length=255, blank=True)  # e.g. Criminal, Family, Corporate
+
+    # Authentication & Verification fields
     is_email_verified = models.BooleanField(default=False)
     email_verification_code = models.CharField(max_length=6, blank=True, null=True)
     email_verification_code_expires_at = models.DateTimeField(blank=True, null=True)
+
     password_reset_code = models.CharField(max_length=6, blank=True, null=True)
     password_reset_code_expires_at = models.DateTimeField(blank=True, null=True)
-    full_name = models.CharField(max_length=255, blank=True)
-    gender = models.CharField(max_length=10, blank=True, choices=[('male', 'Male'), ('female', 'Female'), ('other', 'Other')])
+
+    gender = models.CharField(
+        max_length=10,
+        blank=True,
+        choices=[('male', 'Male'), ('female', 'Female'), ('other', 'Other')]
+    )
     is_2fa_enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -31,72 +55,59 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+    # ==================== OTP Generation Methods ====================
+
     def generate_email_verification_code(self):
-        """Generate and save OTP for email verification."""
-        from django.utils.crypto import get_random_string
-        code = get_random_string(length=6, allowed_chars='0123456789')
+        """Generate 6-digit OTP for email verification (expires in 5 minutes)"""
+        code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
         self.email_verification_code = code
         self.email_verification_code_expires_at = timezone.now() + timedelta(minutes=5)
         self.save(update_fields=['email_verification_code', 'email_verification_code_expires_at'])
-        
-        # Save OTP to Token model
-        token = Token.objects.filter(user=self, email=self.email, revoked=False).first()
-        if token:
-            token.otp = code
-            token.otp_expires_at = self.email_verification_code_expires_at
-            token.save(update_fields=['otp', 'otp_expires_at'])
-            logger.info(f"Updated OTP {code} for user: {self.email} in Token model")
-        else:
-            Token.objects.create(
-                user=self,
-                email=self.email,
-                otp=code,
-                otp_expires_at=self.email_verification_code_expires_at,
-                created_at=timezone.now()
-            )
-            logger.info(f"Created new Token with OTP {code} for user: {self.email}")
+        logger.info(f"Email verification OTP generated for {self.email}: {code}")
         return code
 
     def generate_password_reset_code(self):
-        """Generate and save OTP for password reset."""
-        from django.utils.crypto import get_random_string
-        code = get_random_string(length=6, allowed_chars='0123456789')
+        """Generate 6-digit OTP for password reset (expires in 15 minutes)"""
+        code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
         self.password_reset_code = code
         self.password_reset_code_expires_at = timezone.now() + timedelta(minutes=15)
         self.save(update_fields=['password_reset_code', 'password_reset_code_expires_at'])
-        
-        # Save OTP to Token model
-        token = Token.objects.filter(user=self, email=self.email, revoked=False).first()
-        if token:
-            token.otp = code
-            token.otp_expires_at = self.password_reset_code_expires_at
-            token.save(update_fields=['otp', 'otp_expires_at'])
-            logger.info(f"Updated OTP {code} for password reset for user: {self.email} in Token model")
-        else:
-            Token.objects.create(
-                user=self,
-                email=self.email,
-                otp=code,
-                otp_expires_at=self.password_reset_code_expires_at,
-                created_at=timezone.now()
-            )
-            logger.info(f"Created new Token with OTP {code} for password reset for user: {self.email}")
+        logger.info(f"Password reset OTP generated for {self.email}: {code}")
         return code
 
+    def generate_2fa_code(self):
+        """Generate 6-digit OTP for 2FA login (reuses email verification fields)"""
+        code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+        self.email_verification_code = code
+        self.email_verification_code_expires_at = timezone.now() + timedelta(minutes=5)
+        self.save(update_fields=['email_verification_code', 'email_verification_code_expires_at'])
+        logger.info(f"2FA OTP generated for {self.email}: {code}")
+        return code
+
+
 class Token(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tokens')
     email = models.EmailField()
-    access_token = models.CharField(max_length=255, blank=True, null=True)
-    refresh_token = models.CharField(max_length=255, blank=True, null=True)
+
+    # JWT tokens are long → use TextField instead of CharField(255)
+    access_token = models.TextField(blank=True, null=True)
+    refresh_token = models.TextField(blank=True, null=True)
+
+    # Optional: for OTP-based login flows
     otp = models.CharField(max_length=6, blank=True, null=True)
-    otp_expires_at = models.DateTimeField(blank=True, null=True)  # Added to track OTP expiration
+    otp_expires_at = models.DateTimeField(blank=True, null=True)
+
     access_token_expires_at = models.DateTimeField(blank=True, null=True)
     refresh_token_expires_at = models.DateTimeField(blank=True, null=True)
     revoked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('user', 'refresh_token')
+
     def __str__(self):
-        return f"{self.user.email} - Token"
+        return f"Token for {self.user.email} ({'Revoked' if self.revoked else 'Active'})"
+
 
 class PasswordResetSession(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -109,29 +120,15 @@ class PasswordResetSession(models.Model):
     def __str__(self):
         return f"Password Reset Session for {self.user.email}"
 
-# 
-import uuid
-from django.db import models
-from django.conf import settings
-
-User = settings.AUTH_USER_MODEL
-
 
 class Profile(models.Model):
     user = models.OneToOneField(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='profile'
     )
-    employee_id = models.CharField(
-        max_length=20,
-        unique=True,
-        blank=True
-    )
-    phone = models.CharField(
-        max_length=20,
-        blank=True
-    )
+    employee_id = models.CharField(max_length=20, unique=True, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
     image = models.ImageField(
         upload_to='profile_images/',
         default='profile_images/default_profile.png'
@@ -143,26 +140,19 @@ class Profile(models.Model):
         return f"Profile of {self.user.email}"
 
     def save(self, *args, **kwargs):
-        # নতুন প্রোফাইল হলে employee_id সেট করো
         if not self.employee_id:
             unique_id = uuid.uuid4().hex[:8].upper()
             self.employee_id = f"EMP{unique_id}"
-
         super().save(*args, **kwargs)
 
 
-from django.db import models
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
-
 class AppleUserToken(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='apple_token')
     id_token = models.TextField()
     email = models.EmailField()
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
-        return self.email
+        return f"Apple Token - {self.email}"

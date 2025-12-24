@@ -1,28 +1,21 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
-from django.conf.urls.static import static
-from tts_app.views import home  # Import the home view
+from django.conf.urls.static import static # Import the home view
 
 # এই লাইনটা যোগ করুন (যদি আগে না থাকে)
 from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # আপনার আগের কোডে যেটা ছিল তা মুছে এটা বসান
-APPLE_PRIVATE_KEY_PATH = BASE_DIR / "p.txt"
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('authentication.urls')),
-    path('api/payment/', include('payment.urls')),
-    path('tts/', include('tts_app.urls')),
-    path('api/', include('bot.urls')),
-    path('api/', include('dashboard.urls')),
-    
-    # allauth routes
-    path('accounts/', include('allauth.urls')),  
 
-    path('', home),
+    
+   
 ]
 
 if settings.DEBUG:

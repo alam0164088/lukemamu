@@ -12,30 +12,6 @@ helpmespeak_main/
 │   ├── tests.py
 │   ├── urls.py
 │   └── views.py
-├── bot
-│   ├── admin.py
-│   ├── apps.py
-│   ├── __init__.py
-│   ├── migrations
-│   ├── models.py
-│   ├── __pycache__
-│   ├── serializers.py
-│   ├── serializers.py.save
-│   ├── tests.py
-│   ├── translator.py
-│   ├── urls.py
-│   └── views.py
-├── dashboard
-│   ├── admin.py
-│   ├── apps.py
-│   ├── __init__.py
-│   ├── migrations
-│   ├── models.py
-│   ├── __pycache__
-│   ├── serializers.py
-│   ├── tests.py
-│   ├── urls.py
-│   └── views.py
 ├── db.sqlite3
 ├── env
 │   ├── bin
@@ -53,30 +29,9 @@ helpmespeak_main/
 │   ├── settings.py
 │   ├── urls.py
 │   └── wsgi.py
-├── payment
-│   ├── admin.py
-│   ├── apps.py
-│   ├── __init__.py
-│   ├── migrations
-│   ├── models.py
-│   ├── __pycache__
-│   ├── serializers.py
-│   ├── tests.py
-│   ├── urls.py
-│   └── views.py
 ├── README.md
 ├── requirements.txt
 ├── staticfiles
 │   ├── admin
 │   └── rest_framework
-├── tts_app
-│   ├── admin.py
-│   ├── apps.py
-│   ├── __init__.py
-│   ├── migrations
-│   ├── models.py
-│   ├── __pycache__
-│   ├── tests.py
-│   ├── urls.py
-│   └── views.py
 └── t.txt

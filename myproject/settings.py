@@ -69,10 +69,8 @@ INSTALLED_APPS = [
     
 
     "authentication",
-    "payment",
-    "tts_app",
-    "bot",
-    "dashboard",
+    'attorney',
+    
 ]
 
 SITE_ID = 1
@@ -125,7 +123,7 @@ DATABASES = {
     "default": dj_database_url.config(
         default=env(
             "DATABASE_URL",
-            default=f"sqlite:///{BASE_DIR / 'helpmespeak_db.sqlite3'}"
+            default=f"sqlite:///{BASE_DIR / 'lukemama.sqlite3'}"
         ),
         conn_max_age=600,
     )
@@ -172,20 +170,27 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+
 # ------------------------------
-# Email
+# Email (Development - Console Backend)
 # ------------------------------
-EMAIL_BACKEND = env("EMAIL_BACKEND")
-EMAIL_HOST = env("EMAIL_HOST")
-EMAIL_PORT = env.int("EMAIL_PORT")
-EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL")
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS")
-EMAIL_HOST_USER = env("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
-
-
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@helpmespeak.app")
-
+# ------------------------------
+# Email Settings (Development vs Production)
+# ------------------------------
+if DEBUG:
+    # ডেভেলপমেন্টে: ইমেইল টার্মিনালে প্রিন্ট হবে (কোনো আসল ইমেইল যাবে না)
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    print("Email backend: Console (emails will print in terminal)")
+else:
+    # প্রোডাকশনে: আসল SMTP ব্যবহার করুন (PrivateEmail.com)
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = env("EMAIL_HOST")
+    EMAIL_PORT = env.int("EMAIL_PORT", default=465)
+    EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=True)
+    EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
+    EMAIL_HOST_USER = env("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
+    DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@helpmespeak.app")
 
 # 
 # ------------------------------
