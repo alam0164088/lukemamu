@@ -3,6 +3,8 @@ from pathlib import Path
 from datetime import timedelta
 import environ
 import dj_database_url
+import logging
+import sys
 
 # ------------------------------
 # Base directory
@@ -18,6 +20,24 @@ env = environ.Env(
     EMAIL_PORT=(int, 587),
     EMAIL_USE_TLS=(bool, True)
 )
+
+
+def _mask_secret(value: str | None, keep: int = 4) -> str:
+    """Return a masked version of a secret for safe logging.
+
+    Examples:
+        'abcd...wxyz' when keep=4
+    """
+    try:
+        if not value:
+            return "<not set>"
+        s = str(value)
+        if len(s) <= keep * 2 + 3:
+            # short secret -> partially mask
+            return s[:keep] + "..."
+        return f"{s[:keep]}...{s[-keep:]}"
+    except Exception:
+        return "<masked>"
 
 
 
@@ -38,6 +58,17 @@ DEBUG = env.bool("DEBUG", default=True)
 
 
 ALLOWED_HOSTS = ['api.helpmespeak.app','10.10.7.19','15.236.180.222', 'localhost', '127.0.0.1']
+
+# When developing and DEBUG=True, allow binding to 0.0.0.0 so incoming
+# requests that use that host (e.g., when you visit http://0.0.0.0:8001)
+# are accepted. This is intentionally limited to development.
+if DEBUG:
+    try:
+        if '0.0.0.0' not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append('0.0.0.0')
+    except Exception:
+        # In case ALLOWED_HOSTS was set from env to a non-list, fallback to a permissive setting in dev
+        ALLOWED_HOSTS = ['0.0.0.0']
 
 
 
@@ -217,7 +248,7 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default=None)
 if not GOOGLE_API_KEY:
     print("WARNING: GOOGLE_API_KEY not configured!")
 else:
-    print(f"SUCCESS: GOOGLE_API_KEY loaded: {GOOGLE_API_KEY[:4]}...{GOOGLE_API_KEY[-4:]}")
+    print(f"SUCCESS: GOOGLE_API_KEY loaded: {_mask_secret(GOOGLE_API_KEY)}")
 
 # ------------------------------
 # Google & Apple OAuth
@@ -265,9 +296,10 @@ GOOGLE_SERVICE_ACCOUNT_FILE = env("GOOGLE_SERVICE_ACCOUNT_FILE", default="")
 # Debug (শুধু ডেভেলপমেন্টে)
 # ------------------------------
 if DEBUG:
-    print("SECRET_KEY:", SECRET_KEY)
-    print("JWT_SECRET:", JWT_SECRET)
-    print("APPLE_CALLBACK_URL =", APPLE_CALLBACK_URL)
+    # For safety, avoid printing full secrets. Show masked values instead.
+    logging.getLogger(__name__).info("SECRET_KEY: %s", _mask_secret(SECRET_KEY))
+    logging.getLogger(__name__).info("JWT_SECRET: %s", _mask_secret(JWT_SECRET))
+    logging.getLogger(__name__).info("APPLE_CALLBACK_URL = %s", _mask_secret(APPLE_CALLBACK_URL))
 
 
 

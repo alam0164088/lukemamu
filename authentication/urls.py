@@ -1,5 +1,5 @@
 # authentication/urls.py
-from .views import CustomAppleLogin, DeleteAccountView
+from .views import CustomAppleLogin, DeleteAccountView, InitialAdminSignUpView
 from django.urls import path
 from .views import (
     RegisterView,
@@ -55,6 +55,8 @@ urlpatterns = [
     path('dj-rest-auth/apple/', CustomAppleLogin.as_view(), name='apple_login'),
     path("profile/delete/",DeleteAccountView.as_view(), name="delete-profile"),
     
+    # for initial admin creation (one-time)
+    path('auth/admin/initial-signup/', InitialAdminSignUpView.as_view(), name='initial-admin-signup'),
 
 
 
