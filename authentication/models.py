@@ -30,6 +30,10 @@ class User(AbstractUser):
     preferred_legal_area = models.CharField(max_length=255, blank=True)
 
     # Attorney specific
+    # Attorney specific (kept for backward compatibility temporarily).
+    # New code also stores attorney details in the separate `Attorney` model.
+    # After running a data migration to copy existing values into `Attorney`,
+    # you can safely remove these fields in a later migration.
     designation = models.CharField(max_length=255, blank=True)  # e.g. Advocate, Barrister
     area_of_law = models.CharField(max_length=255, blank=True)  # e.g. Criminal, Family, Corporate
 
@@ -144,6 +148,31 @@ class Profile(models.Model):
             unique_id = uuid.uuid4().hex[:8].upper()
             self.employee_id = f"EMP{unique_id}"
         super().save(*args, **kwargs)
+
+
+class Attorney(models.Model):
+    """Separate table for attorney-specific information.
+
+    Linked one-to-one with `User`. Keeps attorney metadata out of the auth table.
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='attorney_profile'
+    )
+    designation = models.CharField(max_length=255, blank=True)  # e.g. Advocate, Barrister
+    area_of_law = models.CharField(max_length=255, blank=True)  # e.g. Criminal, Family, Corporate
+    bar_license_number = models.CharField(max_length=128, blank=True)
+    bio = models.TextField(blank=True)
+    # Additional profile fields useful for display on attorney profile pages
+    languages = models.CharField(max_length=255, blank=True, help_text="Comma-separated list of languages")
+    experience = models.CharField(max_length=255, blank=True, help_text="Short summary like '8+ years'")
+    response_time = models.CharField(max_length=128, blank=True, help_text="E.g. 'Responds in ~2 hrs'")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Attorney profile for {self.user.email}"
 
 
 class AppleUserToken(models.Model):

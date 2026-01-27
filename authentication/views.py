@@ -572,6 +572,20 @@ class MeView(APIView):
                     request.user.full_name = full_name
                     request.user.save(update_fields=['first_name', 'last_name', 'full_name'])
 
+                # If the user is an attorney, update/create the Attorney profile as well
+                if getattr(request.user, 'role', '') == 'attorney':
+                    from .models import Attorney
+                    att, _ = Attorney.objects.get_or_create(user=request.user)
+                    # update fields if provided in request
+                    att.designation = request.data.get('designation', att.designation)
+                    att.area_of_law = request.data.get('area_of_law', att.area_of_law)
+                    att.bar_license_number = request.data.get('bar_license_number', att.bar_license_number)
+                    att.bio = request.data.get('bio', att.bio)
+                    att.languages = request.data.get('languages', att.languages)
+                    att.experience = request.data.get('experience', att.experience)
+                    att.response_time = request.data.get('response_time', att.response_time)
+                    att.save()
+
                 return Response({
                     "message": "Profile updated successfully",
                     "user": UserProfileSerializer(request.user, context={'request': request}).data

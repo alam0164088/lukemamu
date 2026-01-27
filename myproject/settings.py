@@ -4,7 +4,11 @@ from datetime import timedelta
 import environ
 import dj_database_url
 import logging
-import sys
+
+# suppress noisy PIL/Pillow output in console
+logging.getLogger('PIL').setLevel(logging.WARNING)
+logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+logging.getLogger('PIL.JpegImagePlugin').setLevel(logging.WARNING)
 
 # ------------------------------
 # Base directory
@@ -177,8 +181,8 @@ REST_FRAMEWORK = {
 # JWT Settings
 # ------------------------------
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=300),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=3000),
     "AUTH_HEADER_TYPES": ("Bearer",),
     "SIGNING_KEY": JWT_SECRET,
 }

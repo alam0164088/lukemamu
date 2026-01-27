@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Profile
+from .models import User, Profile, Attorney
 import re
 import logging
 
@@ -61,6 +61,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         full_name = validated_data.get('full_name', '')
         role = validated_data.get('role', 'user')
 
+        # Extract attorney-specific fields (they will be stored in the Attorney table)
+        designation = validated_data.pop('designation', '')
+        area_of_law = validated_data.pop('area_of_law', '')
+
         user = User.objects.create_user(
             username=validated_data['email'],
             email=validated_data['email'],
@@ -70,9 +74,15 @@ class RegisterSerializer(serializers.ModelSerializer):
             gender=validated_data.get('gender', ''),
             location=validated_data.get('location', ''),
             preferred_legal_area=validated_data.get('preferred_legal_area', ''),
-            designation=validated_data.get('designation', ''),
-            area_of_law=validated_data.get('area_of_law', ''),
         )
+
+        # If this is an attorney, create the Attorney record linked to the user
+        if role == 'attorney':
+            Attorney.objects.create(
+                user=user,
+                designation=designation or '',
+                area_of_law=area_of_law or ''
+            )
 
         # প্রোফাইল অটো তৈরি (employee_id সহ)
         Profile.objects.get_or_create(user=user)
@@ -198,10 +208,12 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     email_verified = serializers.BooleanField(source='is_email_verified', read_only=True)
     profile_image = serializers.SerializerMethodField()
+    attorney = serializers.SerializerMethodField()
+    phone = serializers.CharField(source='profile.phone', read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'gender', 'email_verified', 'created_at', 'role', 'profile_image']
+        fields = ['id', 'email', 'full_name', 'gender', 'email_verified', 'created_at', 'role', 'profile_image', 'phone', 'attorney']
         read_only_fields = ['id', 'email', 'created_at', 'role', 'email_verified']
 
     def get_profile_image(self, obj):
@@ -213,3 +225,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
         except Profile.DoesNotExist:
             pass
         return request.build_absolute_uri('/media/profile_images/default_profile.png')
+
+    def get_attorney(self, obj):
+        """Return attorney profile details if user is an attorney, else None."""
+        if obj.role != 'attorney':
+            return None
+        try:
+            att = obj.attorney_profile
+        except Exception:
+            return None
+
+        return {
+            'designation': att.designation,
+            'area_of_law': att.area_of_law,
+            'bar_license_number': att.bar_license_number,
+            'bio': att.bio,
+            'languages': att.languages,
+            'experience': att.experience,
+            'response_time': att.response_time,
+        }
