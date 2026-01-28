@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import ConsultationRequest
 from django.contrib.auth import get_user_model
+from authentication.models import Attorney
 
 User = get_user_model()
 
@@ -19,6 +20,9 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Receiver not found.")
         # optional: role check
         if getattr(user, 'role', '') != 'attorney':
+            raise serializers.ValidationError("Receiver is not an attorney.")
+        # যখন চেক করবেন receiver অ্যাটর্নি কি না:
+        if not Attorney.objects.filter(user_id=value).exists():
             raise serializers.ValidationError("Receiver is not an attorney.")
         return value
 

@@ -55,13 +55,24 @@ class ConsultationReplyView(APIView):
         message = data.get('message', '')
         case_details = data.get('case_details')
 
+        # duplicate check: same parent, same sender and same subject (+ case_details if provided)
+        dup_qs = ConsultationRequest.objects.filter(parent=original, sender=request.user, subject=subject)
+        if case_details is not None:
+            dup_qs = dup_qs.filter(case_details=case_details)
+
+        if dup_qs.exists():
+            # return existing reply instead of creating duplicate
+            existing = dup_qs.order_by('-created_at').first()
+            return Response(ConsultationSerializer(existing).data, status=status.HTTP_200_OK)
+
         # create reply as a new ConsultationRequest (sender=attorney, receiver=original.sender)
         reply = ConsultationRequest.objects.create(
             sender=request.user,
             receiver=original.sender,
             subject=subject,
             message=message,
-            case_details=case_details
+            case_details=case_details,
+            parent=original,
         )
 
         # mark original as read

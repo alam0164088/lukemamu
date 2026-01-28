@@ -14,28 +14,18 @@ logger = logging.getLogger(__name__)
 
 class User(AbstractUser):
     ROLE_CHOICES = (
-        ('user', 'User'),          # Client
-        ('attorney', 'Attorney'),  # Lawyer
+        ('user', 'User'),
+        ('attorney', 'Attorney'),
         ('admin', 'Admin'),
     )
 
     email = models.EmailField(_('email address'), unique=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
-
-    # Common fields
     full_name = models.CharField(max_length=255, blank=True)
 
-    # User (Client) specific
+    # Client-specific fields
     location = models.CharField(max_length=255, blank=True)
     preferred_legal_area = models.CharField(max_length=255, blank=True)
-
-    # Attorney specific
-    # Attorney specific (kept for backward compatibility temporarily).
-    # New code also stores attorney details in the separate `Attorney` model.
-    # After running a data migration to copy existing values into `Attorney`,
-    # you can safely remove these fields in a later migration.
-    designation = models.CharField(max_length=255, blank=True)  # e.g. Advocate, Barrister
-    area_of_law = models.CharField(max_length=255, blank=True)  # e.g. Criminal, Family, Corporate
 
     # Authentication & Verification fields
     is_email_verified = models.BooleanField(default=False)

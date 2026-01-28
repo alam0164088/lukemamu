@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Token, PasswordResetSession,  Profile
+from .models import User, Token, PasswordResetSession,  Profile, Attorney
 from django.utils.translation import gettext_lazy as _
 
 # Custom User Admin
@@ -73,3 +73,4 @@ admin.site.register(User, UserAdmin)
 admin.site.register(Token, TokenAdmin)
 admin.site.register(PasswordResetSession, PasswordResetSessionAdmin)
 admin.site.register(Profile, ProfileAdmin)
+admin.site.register(Attorney)

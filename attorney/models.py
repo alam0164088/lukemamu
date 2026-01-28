@@ -26,6 +26,9 @@ class ConsultationRequest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # add parent thread pointer
+    parent = models.ForeignKey('self', null=True, blank=True, related_name='replies', on_delete=models.CASCADE)
+
     class Meta:
         ordering = ['-created_at']
 
