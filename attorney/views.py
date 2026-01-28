@@ -22,13 +22,13 @@ class ConsultationListView(APIView):
     def get(self, request):
         user = request.user
 
-        # attorney: show only items the attorney SENT (their offers)
+        # attorney: show requests sent TO the attorney (incoming)
         if getattr(user, 'role', '') == 'attorney':
-            sent_qs = ConsultationRequest.objects.filter(sender=user).order_by('-created_at')
-            return Response({"sent": ConsultationSerializer(sent_qs, many=True).data},
+            received_qs = ConsultationRequest.objects.filter(receiver=user).order_by('-created_at')
+            return Response({"received": ConsultationSerializer(received_qs, many=True).data},
                             status=status.HTTP_200_OK)
 
-        # normal user: show only offers sent to this user BY attorneys
+        # normal user: show only items where this user is the receiver (offers from attorneys)
         received_qs = ConsultationRequest.objects.filter(receiver=user, sender__role='attorney').order_by('-created_at')
         return Response({"received": ConsultationSerializer(received_qs, many=True).data},
                         status=status.HTTP_200_OK)
