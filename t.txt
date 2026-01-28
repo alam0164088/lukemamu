@@ -1,37 +1,123 @@
-helpmespeak_main/
+.
+├── -
+├── =0.23.0
+├── =0.24.1
+├── =0.60.0
+├── =5.0.0
+├── attorney
+│   ├── admin.py
+│   ├── apps.py
+│   ├── __init__.py
+│   ├── migrations
+│   │   ├── __init__.py
+│   │   └── __pycache__
+│   ├── models.py
+│   ├── __pycache__
+│   │   ├── admin.cpython-312.pyc
+│   │   ├── apps.cpython-312.pyc
+│   │   ├── __init__.cpython-312.pyc
+│   │   └── models.cpython-312.pyc
+│   ├── tests.py
+│   └── views.py
 ├── authentication
 │   ├── admin.py
 │   ├── apps.py
 │   ├── __init__.py
 │   ├── migrations
+│   │   ├── 0001_initial.py
+│   │   ├── 0002_appleusertoken.py
+│   │   ├── 0003_user_area_of_law_user_designation_user_location_and_more.py
+│   │   ├── 0004_alter_appleusertoken_user_alter_token_access_token_and_more.py
+│   │   ├── 0005_attorney.py
+│   │   ├── __init__.py
+│   │   └── __pycache__
 │   ├── models.py
 │   ├── permissions.py
 │   ├── __pycache__
+│   │   ├── admin.cpython-312.pyc
+│   │   ├── apps.cpython-312.pyc
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── models.cpython-312.pyc
+│   │   ├── permissions.cpython-312.pyc
+│   │   ├── serializers.cpython-312.pyc
+│   │   ├── signals.cpython-312.pyc
+│   │   ├── tests.cpython-312.pyc
+│   │   ├── urls.cpython-312.pyc
+│   │   └── views.cpython-312.pyc
 │   ├── serializers.py
 │   ├── signals.py
 │   ├── tests.py
 │   ├── urls.py
 │   └── views.py
-├── db.sqlite3
 ├── env
 │   ├── bin
+│   │   ├── activate
+│   │   ├── activate.csh
+│   │   ├── activate.fish
+│   │   ├── Activate.ps1
+│   │   ├── distro
+│   │   ├── django-admin
+│   │   ├── dotenv
+│   │   ├── gtts-cli
+│   │   ├── gunicorn
+│   │   ├── httpx
+│   │   ├── normalizer
+│   │   ├── openai
+│   │   ├── pip
+│   │   ├── pip3
+│   │   ├── pip3.12
+│   │   ├── pyrsa-decrypt
+│   │   ├── pyrsa-encrypt
+│   │   ├── pyrsa-keygen
+│   │   ├── pyrsa-priv2pub
+│   │   ├── pyrsa-sign
+│   │   ├── pyrsa-verify
+│   │   ├── python -> python3
+│   │   ├── python3 -> /usr/bin/python3
+│   │   ├── python3.12 -> python3
+│   │   ├── sqlformat
+│   │   └── tqdm
 │   ├── include
+│   │   └── python3.12
 │   ├── lib
+│   │   └── python3.12
 │   ├── lib64 -> lib
 │   └── pyvenv.cfg
+├
+├── helpmespeak_db.sqlite3
+├── lukemama.sqlite3
 ├── manage.py
 ├── media
+│
 │   └── profile_images
+│       ├── editprofile.png
+│      
 ├── myproject
+│   ├── apps.py
 │   ├── asgi.py
 │   ├── __init__.py
 │   ├── __pycache__
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── settings.cpython-312.pyc
+│   │   ├── urls.cpython-312.pyc
+│   │   └── wsgi.cpython-312.pyc
 │   ├── settings.py
 │   ├── urls.py
 │   └── wsgi.py
+├── postman.tar.g
 ├── README.md
 ├── requirements.txt
 ├── staticfiles
+│   ├── account
+│   │   └── js
 │   ├── admin
+│   │   ├── css
+│   │   ├── img
+│   │   └── js
 │   └── rest_framework
+│       ├── css
+│       ├── docs
+│       ├── fonts
+│       ├── img
+│       └── js
 └── t.txt

@@ -13,9 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('authentication.urls')),
-
-    
-   
+    path('api/attorney/', include('attorney.urls')),
 ]
 
 if settings.DEBUG:
