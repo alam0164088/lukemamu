@@ -105,6 +105,7 @@ INSTALLED_APPS = [
 
     "authentication",
     'attorney',
+    'channels',
     
 ]
 
@@ -130,6 +131,7 @@ MIDDLEWARE = [
 # ------------------------------
 ROOT_URLCONF = "myproject.urls"
 WSGI_APPLICATION = "myproject.wsgi.application"
+ASGI_APPLICATION = "myproject.asgi.application"
 AUTH_USER_MODEL = "authentication.User"
 
 # ------------------------------
@@ -311,4 +313,11 @@ if DEBUG:
 # Apple Private Key (from p.txt)
 # ------------------------------
 APPLE_PRIVATE_KEY = env("APPLE_PRIVATE_KEY", default="").replace("\\n", "\n")
+
+# development channel layer (in-memory)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
 
