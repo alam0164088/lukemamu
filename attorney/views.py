@@ -1,11 +1,16 @@
 from django.shortcuts import render
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import ConsultationRequest, Message
 from .serializers import ConsultationSerializer, MessageSerializer, ConsultationCreateSerializer, ConsultationReplySerializer
+import logging
+from datetime import timedelta
+
+logger = logging.getLogger(__name__)
 
 class ConsultationCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -94,6 +99,13 @@ class ConsultationReplyView(APIView):
 
         if 'subject' in data and data.get('subject') is not None:
             consult.subject = data['subject']
+
+        # If sender is attorney and they are sending the one-time offer/reply,
+        # mark consultation as "offered" so the receiver can accept it.
+        if getattr(request.user, "role", "") == "attorney":
+            # prefer model constant if available
+            consult.status = getattr(ConsultationRequest, "STATUS_OFFERED", "offered")
+
         consult.save()
 
         # create message
@@ -112,7 +124,7 @@ class ConsultationReplyView(APIView):
             "id": msg.id,
             "consultation": consult.id,
             "sender": {"id": msg.sender.id, "email": getattr(msg.sender, "email",""), "full_name": getattr(msg.sender,"full_name","")},
-            "receiver": {"id": msg.receiver.id, "email": getattr(msg.receiver, "email",""), "full_name": getattr(msg.receiver,"full_name","")},
+            "receiver": {"id": msg.receiver.id, "email": getattr(msg.receiver, "email",""), "full_name": getattr(msg.receiver, "full_name", "")},
             "subject": consult.subject,
             "description": case.get("description"),
             "location": case.get("location"),
@@ -122,6 +134,27 @@ class ConsultationReplyView(APIView):
             "created_at": msg.created_at.isoformat()
         }
 
+        # broadcast via channels if configured (send flattened payload)
+        socket_sent = False
+        try:
+            from asgiref.sync import async_to_sync
+            from channels.layers import get_channel_layer
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"chat_{consultation_pk}",
+                {
+                    "type": "chat.message",
+                    "message": resp
+                }
+            )
+            socket_sent = True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("channel send failed")
+
+        # include socket delivery info in response for debugging/frontend
+        resp["socket_sent"] = socket_sent
+        resp["ws_group"] = f"chat_{consultation_pk}"
         return Response(resp, status=status.HTTP_201_CREATED)
 
 class ConsultationAcceptView(APIView):
@@ -133,14 +166,47 @@ class ConsultationAcceptView(APIView):
         except ConsultationRequest.DoesNotExist:
             return Response({"detail":"Consultation not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # only receiver (client) can accept an offer sent to them
-        if request.user != consult.receiver:
-            return Response({"detail":"Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user != consult.receiver and request.user != consult.sender:
+            return Response({"detail": "Not allowed. Only the receiver or the request creator may accept this offer."}, status=status.HTTP_403_FORBIDDEN)
 
         consult.status = ConsultationRequest.STATUS_ACCEPTED
-        consult.save(update_fields=['status','updated_at'])
-        # Optional: notify via channels (consumer will broadcast if implemented)
-        return Response(ConsultationSerializer(consult).data, status=status.HTTP_200_OK)
+        consult.accepted_at = timezone.now()
+        consult.save(update_fields=['status', 'accepted_at', 'updated_at'])
+
+        accepted_by = {
+            "id": request.user.id,
+            "email": getattr(request.user, "email", None),
+            "full_name": getattr(request.user, "full_name", None)
+        }
+
+        # notify via channels (optional)
+        try:
+            from asgiref.sync import async_to_sync
+            from channels.layers import get_channel_layer
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"chat_{pk}",
+                {
+                    "type": "chat.accepted",
+                    "message": {
+                        "consultation": consult.id,
+                        "status": consult.status,
+                        "accepted_by": {
+                            "id": request.user.id,
+                            "email": getattr(request.user, "email", None),
+                            "full_name": getattr(request.user, "full_name", None)
+                        }
+                    }
+                }
+            )
+        except Exception:
+            pass
+
+        return Response({
+            "detail": "Consultation accepted.",
+            "accepted_by": accepted_by,
+            "consultation": ConsultationSerializer(consult).data
+        }, status=status.HTTP_200_OK)
 
 class MessagesListCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -154,8 +220,32 @@ class MessagesListCreateView(APIView):
         if request.user != consult.sender and request.user != consult.receiver:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        qs = Message.objects.filter(consultation=consult).order_by('created_at')
-        return Response(MessageSerializer(qs, many=True).data, status=status.HTTP_200_OK)
+        logger.debug("GET messages: consult=%s status=%s accepted_at=%s updated_at=%s", consult.id, consult.status, consult.accepted_at, consult.updated_at)
+
+        # only return messages created at/after the accept time (use fallback and small grace window)
+        if consult.status != ConsultationRequest.STATUS_ACCEPTED:
+            logger.debug("Returning empty because status != accepted")
+            return Response({"messages": []}, status=status.HTTP_200_OK)
+
+        since = consult.accepted_at or consult.updated_at or consult.created_at
+        # subtract 1 second to avoid clock-race where message and accept timestamps are equal
+        since = since - timedelta(seconds=1)
+        qs = Message.objects.filter(consultation=consult, created_at__gte=since).order_by('created_at')
+
+        logger.debug("Messages returned count=%s", qs.count())
+        # return simplified flattened messages (no nested consultation object)
+        simple = []
+        for m in qs:
+            simple.append({
+                "id": m.id,
+                "consultation": m.consultation.id,
+                "sender": {"id": m.sender.id, "email": getattr(m.sender, "email", ""), "full_name": getattr(m.sender, "full_name", "")},
+                "receiver": {"id": m.receiver.id, "email": getattr(m.receiver, "email", ""), "full_name": getattr(m.receiver, "full_name", "")},
+                "content": m.content,
+                "is_read": m.is_read,
+                "created_at": m.created_at.isoformat() if m.created_at else None
+            })
+        return Response(simple, status=status.HTTP_200_OK)
 
     def post(self, request, consultation_pk):
         try:
@@ -163,106 +253,120 @@ class MessagesListCreateView(APIView):
         except ConsultationRequest.DoesNotExist:
             return Response({"detail": "Consultation not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # only participants can send
         if request.user != consult.sender and request.user != consult.receiver:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        # If sender is attorney, ensure they haven't replied to this consultation already
-        if getattr(request.user, "role", "") == "attorney":
-            if Message.objects.filter(consultation=consult, sender__role='attorney').exists():
-                return Response({"detail": "You have already replied to this consultation."}, status=status.HTTP_400_BAD_REQUEST)
+        # Only allow sending messages after the consultation has been accepted
+        if consult.status != ConsultationRequest.STATUS_ACCEPTED:
+            return Response({"detail": "Conversation not allowed until the consultation offer is accepted."}, status=status.HTTP_403_FORBIDDEN)
 
-        # determine receiver: the other participant
+        serializer = MessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # determine receiver (the other participant)
         receiver = consult.receiver if request.user.pk == consult.sender.pk else consult.sender
 
-        content = request.data.get('content')
-        if not content:
-            return Response({"content": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        # save message with explicit receiver
+        msg = serializer.save(consultation=consult, sender=request.user, receiver=receiver)
 
-        # create message explicitly to ensure NOT NULL fields are set
-        msg = Message.objects.create(
-            consultation=consult,
-            sender=request.user,
-            receiver=receiver,
-            content=content
-        )
+        # prepare flattened payload
+        case = consult.case_details or {}
+        resp = {
+            "id": msg.id,
+            "consultation": consult.id,
+            "sender": {"id": msg.sender.id, "email": getattr(msg.sender, "email", ""), "full_name": getattr(msg.sender, "full_name", "")},
+            "receiver": {"id": msg.receiver.id, "email": getattr(msg.receiver, "email", ""), "full_name": getattr(msg.receiver, "full_name", "")},
+            "subject": consult.subject,
+            "description": case.get("description"),
+            "location": case.get("location"),
+            "budget": case.get("budget"),
+            "message": msg.content,
+            "is_read": msg.is_read,
+            "created_at": msg.created_at.isoformat() if msg.created_at else None
+        }
 
         # broadcast via channels if configured
+        socket_sent = False
         try:
             from asgiref.sync import async_to_sync
             from channels.layers import get_channel_layer
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
                 f"chat_{consultation_pk}",
-                {
-                    "type": "chat.message",
-                    "message": MessageSerializer(msg).data
-                }
+                {"type": "chat.message", "message": resp}
             )
+            socket_sent = True
         except Exception:
-            # ignore channel errors in case channels not configured
-            pass
+            import logging
+            logging.getLogger(__name__).exception("channel send failed")
 
-        return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
+        resp["socket_sent"] = socket_sent
+        resp["ws_group"] = f"chat_{consultation_pk}"
+        return Response(resp, status=status.HTTP_201_CREATED)
 
 class MyConsultationsView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    def get(self, request, *args, **kwargs):
         user = request.user
+        received = []
 
-        # attorney: return consultation-level items only
+        # Attorney view: return consultation-level items with latest reply flattened
         if getattr(user, "role", "") == "attorney":
-            received_qs = ConsultationRequest.objects.filter(receiver=user).order_by('-updated_at')
-            consultations = []
-            for c in received_qs:
-                consultations.append({
+            qs = ConsultationRequest.objects.filter(receiver=user).order_by('-updated_at')
+            for c in qs:
+                item = {
                     "id": c.id,
-                    "sender": {
-                        "id": c.sender.id,
-                        "email": getattr(c.sender, "email", ""),
-                        "full_name": getattr(c.sender, "full_name", "")
-                    },
-                    "receiver": {
-                        "id": c.receiver.id,
-                        "email": getattr(c.receiver, "email", ""),
-                        "full_name": getattr(c.receiver, "full_name", "")
-                    },
+                    "sender": {"id": c.sender.id, "email": getattr(c.sender, "email", ""), "full_name": getattr(c.sender, "full_name", "")},
+                    "receiver": {"id": c.receiver.id, "email": getattr(c.receiver, "email", ""), "full_name": getattr(c.receiver, "full_name", "")},
                     "subject": c.subject,
                     "message": c.message,
+                    "case_details": c.case_details or {},
                     "status": c.status,
                     "is_read": c.is_read,
                     "created_at": c.created_at.isoformat() if c.created_at else None,
-                    "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+                    "updated_at": c.updated_at.isoformat() if c.updated_at else None
+                }
+                last_msg = Message.objects.filter(consultation=c).order_by('-created_at').first()
+                if last_msg:
+                    case = c.case_details or {}
+                    item.update({
+                        "description": case.get("description"),
+                        "location": case.get("location"),
+                        "budget": case.get("budget"),
+                        "latest_reply": {
+                            "id": last_msg.id,
+                            "consultation": c.id,
+                            "sender": {"id": last_msg.sender.id, "email": getattr(last_msg.sender, "email", ""), "full_name": getattr(last_msg.sender, "full_name", "")},
+                            "receiver": {"id": last_msg.receiver.id, "email": getattr(last_msg.receiver, "email", ""), "full_name": getattr(last_msg.receiver, "full_name", "")},
+                            "message": last_msg.content,
+                            "is_read": last_msg.is_read,
+                            "created_at": last_msg.created_at.isoformat() if last_msg.created_at else None
+                        }
+                    })
+                received.append(item)
+
+        # Normal user view: return flattened latest message per consultation (so no duplicates)
+        else:
+            consult_ids = Message.objects.filter(receiver=user).values_list('consultation', flat=True).distinct()
+            for cid in consult_ids:
+                m = Message.objects.filter(receiver=user, consultation_id=cid).order_by('-created_at').first()
+                if not m:
+                    continue
+                consult = m.consultation
+                case = consult.case_details or {}
+                received.append({
+                    "id": m.id,
+                    "consultation": consult.id,
+                    "sender": {"id": m.sender.id, "email": getattr(m.sender, "email", ""), "full_name": getattr(m.sender, "full_name", "")},
+                    "receiver": {"id": m.receiver.id, "email": getattr(m.receiver, "email", ""), "full_name": getattr(m.receiver, "full_name", "")},
+                    "subject": consult.subject,
+                    "description": case.get("description"),
+                    "location": case.get("location"),
+                    "budget": case.get("budget"),
+                    "message": m.content,
+                    "is_read": m.is_read,
+                    "created_at": m.created_at.isoformat() if m.created_at else None
                 })
-            return Response({"received": consultations}, status=status.HTTP_200_OK)
 
-        # normal user: return message-level items only (flattened)
-        msgs_qs = Message.objects.filter(receiver=user).order_by('-created_at')
-        messages = []
-        for m in msgs_qs:
-            consult = m.consultation
-            case = consult.case_details or {}
-            messages.append({
-                "id": m.id,
-                "consultation": consult.id,
-                "sender": {
-                    "id": m.sender.id,
-                    "email": getattr(m.sender, "email", ""),
-                    "full_name": getattr(m.sender, "full_name", "")
-                },
-                "receiver": {
-                    "id": m.receiver.id,
-                    "email": getattr(m.receiver, "email", ""),
-                    "full_name": getattr(m.receiver, "full_name", "")
-                },
-                "subject": consult.subject,
-                "description": case.get("description"),
-                "location": case.get("location"),
-                "budget": case.get("budget"),
-                "message": m.content,
-                "is_read": m.is_read,
-                "created_at": m.created_at.isoformat() if m.created_at else None
-            })
-
-        return Response({"received": messages}, status=status.HTTP_200_OK)
+        return Response({"received": received}, status=status.HTTP_200_OK)

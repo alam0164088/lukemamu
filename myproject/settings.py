@@ -132,6 +132,8 @@ MIDDLEWARE = [
 ROOT_URLCONF = "myproject.urls"
 WSGI_APPLICATION = "myproject.wsgi.application"
 ASGI_APPLICATION = "myproject.asgi.application"
+CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+
 AUTH_USER_MODEL = "authentication.User"
 
 # ------------------------------
