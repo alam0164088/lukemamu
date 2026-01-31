@@ -1,5 +1,4 @@
 # authentication/urls.py
-from .views import CustomAppleLogin, DeleteAccountView, InitialAdminSignUpView
 from django.urls import path
 from .views import (
     RegisterView,
@@ -16,11 +15,12 @@ from .views import (
     Enable2FAView,
     Verify2FAView,
     MeView,
-    GoogleIdTokenLogin
-  # ← এটা আবার add করো
-  
-
-   
+    GoogleIdTokenLogin,
+    CustomAppleLogin,
+    DeleteAccountView,
+    InitialAdminSignUpView,
+    UserLoginView,
+    AttorneyLoginView
 )
 
 urlpatterns = [
@@ -31,7 +31,8 @@ urlpatterns = [
     path('auth/otp/verify/', VerifyOTPView.as_view(), name='verify-otp'),
 
     # Login & Tokens
-    path('auth/login/', LoginView.as_view(), name='login'),
+    path('login/', UserLoginView.as_view(), name='user-login'),
+    path('attorney-login/', AttorneyLoginView.as_view(), name='attorney-login'),
     path('auth/token/refresh/', RefreshTokenView.as_view(), name='refresh-token'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
 
@@ -47,19 +48,16 @@ urlpatterns = [
 
     # User Profile
     path('auth/me/', MeView.as_view(), name='me'),
-    
 
     # Social logins
     path('auth/google/id-token/', GoogleIdTokenLogin.as_view(), name='google-id-token-login'),
-
     path('dj-rest-auth/apple/', CustomAppleLogin.as_view(), name='apple_login'),
-    path("profile/delete/",DeleteAccountView.as_view(), name="delete-profile"),
+    path('profile/delete/', DeleteAccountView.as_view(), name='delete-profile'),
     
     # for initial admin creation (one-time)
     path('auth/admin/initial-signup/', InitialAdminSignUpView.as_view(), name='initial-admin-signup'),
 
-
-
-
-
+    # Role-based Login
+    path('login/', UserLoginView.as_view(), name='user-login'),
+    path('attorney-login/', AttorneyLoginView.as_view(), name='attorney-login'),
 ]

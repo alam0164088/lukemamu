@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate  # ← এখানে 'authenticate' যোগ করো
 from django.views.decorators.cache import never_cache
 from django.utils.decorators import method_decorator
 import jwt
@@ -865,3 +865,99 @@ class DeleteAccountView(APIView):
         except Exception as e:
             logger.error(f"Failed to delete account for {user.email}: {str(e)}")
             return Response({"error": str(e)}, status=500)
+
+class UserLoginView(APIView):
+    """
+    User Login — শুধুমাত্র role='user' এর জন্য
+    Attorney account দিয়ে এখানে login করতে পারবে না
+    """
+    def post(self, request):
+        email = request.data.get('email')
+        password = request.data.get('password')
+        
+        if not email or not password:
+            return Response(
+                {"error": "Email and password required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = authenticate(username=email, password=password)  # ✓ এখন কাজ করবে
+        
+        if not user:
+            return Response(
+                {"error": "Invalid email or password"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if user.role != 'user':
+            return Response(
+                {
+                    "error": f"Access Denied! Your role is '{user.role}'.",
+                    "message": f"You are an {user.role}. Use appropriate endpoint.",
+                    "your_role": user.role
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user_id': user.id,
+            'email': user.email,
+            'role': user.role,
+            'full_name': user.full_name
+        }, status=status.HTTP_200_OK)
+
+
+class AttorneyLoginView(APIView):
+    """
+    Attorney Login — শুধুমাত্র role='attorney' এর জন্য
+    User account দিয়ে এখানে login করতে পারবে না
+    """
+    def post(self, request):
+        email = request.data.get('email')
+        password = request.data.get('password')
+        
+        if not email or not password:
+            return Response(
+                {"error": "Email and password required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = authenticate(username=email, password=password)  # ✓ এখন কাজ করবে
+        
+        if not user:
+            return Response(
+                {"error": "Invalid email or password"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if user.role != 'attorney':
+            return Response(
+                {
+                    "error": f"Access Denied! Your role is '{user.role}'.",
+                    "message": f"You are a {user.role}. Use user login endpoint.",
+                    "your_role": user.role
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        refresh = RefreshToken.for_user(user)
+        attorney_info = {}
+        if hasattr(user, 'attorney_profile') and user.attorney_profile:
+            attorney_info = {
+                'designation': user.attorney_profile.designation,
+                'area_of_law': user.attorney_profile.area_of_law,
+                'experience': user.attorney_profile.experience
+            }
+        
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user_id': user.id,
+            'email': user.email,
+            'role': user.role,
+            'full_name': user.full_name,
+            'attorney_profile': attorney_info
+        }, status=status.HTTP_200_OK)
