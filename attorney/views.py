@@ -4,11 +4,14 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from .models import ConsultationRequest, Message
 from .serializers import ConsultationSerializer, MessageSerializer, ConsultationCreateSerializer, ConsultationReplySerializer
+from attorney.models import Event
+from attorney.serializers import EventSerializer
 import logging
-from datetime import timedelta
+from datetime import timedelta, date
 
 logger = logging.getLogger(__name__)
 
@@ -370,3 +373,33 @@ class MyConsultationsView(APIView):
                 })
 
         return Response({"received": received}, status=status.HTTP_200_OK)
+
+class EventViewSet(viewsets.ModelViewSet):
+    """Event API — Create, Read, Update, Delete events"""
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Get only current user's events"""
+        return Event.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        """Create event for current user"""
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def my_events(self, request):
+        """Get all events for current user"""
+        events = self.get_queryset()
+        serializer = self.get_serializer(events, many=True)
+        return Response({
+            'count': events.count(),
+            'events': serializer.data
+        })
+    
+    @action(detail=False, methods=['get'])
+    def upcoming_events(self, request):
+        """Get upcoming events (from today onwards)"""
+        events = self.get_queryset().filter(date__gte=date.today()).order_by('date', 'time')
+        serializer = self.get_serializer(events, many=True)
+        return Response(serializer.data)

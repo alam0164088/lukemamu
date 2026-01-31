@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import ConsultationRequest, Message
+from attorney.models import Event
 
 User = get_user_model()
 
@@ -95,6 +96,12 @@ class ConsultationReplySerializer(serializers.Serializer):
 
     def create(self, validated_data):
         return validated_data
+
+class EventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = ['id', 'title', 'description', 'date', 'time', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 from attorney.models import ConsultationRequest
 
