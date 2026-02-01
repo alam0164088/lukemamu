@@ -11,20 +11,46 @@ User = get_user_model()
 
 @sync_to_async
 def get_user_from_token(token):
-    """Extract user from JWT token — WITHOUT signature verification"""
+    """Extract user from JWT token"""
     try:
-        # Decode WITHOUT verifying signature (safe for dev, extract user_id from payload)
-        payload = jwt.decode(token, options={"verify_signature": False})
+        # ✓ Use JWT_SECRET, not SECRET_KEY
+        secret = getattr(settings, 'JWT_SECRET', settings.SECRET_KEY)
+        payload = jwt.decode(token, secret, algorithms=['HS256'])
         user_id = payload.get('user_id')
-        logger.debug("✓ JWT decoded (no sig verify) user_id=%s", user_id)
+        logger.debug("✓ JWT decoded user_id=%s", user_id)
         user = User.objects.get(id=user_id)
-        logger.debug("✓ User found: id=%s username=%s", user.id, user.username)
+        logger.debug("✓ User found: id=%s", user.id)
         return user
     except User.DoesNotExist:
         logger.warning("✗ User not found for user_id=%s", user_id)
         return None
+    except jwt.InvalidSignatureError:
+        logger.warning("✗ JWT signature invalid - wrong secret key used")
+        return None
+    except jwt.DecodeError as e:
+        logger.exception("✗ JWT decode error: %s", e)
+        return None
     except Exception as e:
         logger.exception("✗ Token decode failed: %s", e)
+        return None
+
+@sync_to_async
+def get_consultation_details(consultation_id):
+    """Get consultation status and details"""
+    try:
+        from attorney.models import ConsultationRequest
+        consultation = ConsultationRequest.objects.get(pk=consultation_id)
+        return {
+            'id': consultation.id,
+            'status': consultation.status,
+            'sender_id': consultation.sender_id,
+            'receiver_id': consultation.receiver_id
+        }
+    except ConsultationRequest.DoesNotExist:
+        logger.warning("✗ Consultation not found pk=%s", consultation_id)
+        return None
+    except Exception as e:
+        logger.exception("✗ get_consultation_details failed: %s", e)
         return None
 
 @sync_to_async
@@ -37,7 +63,6 @@ def get_receiver_id(consultation_id, sender_id):
         logger.debug("Consultation: sender_id=%s receiver_id=%s", 
                      consultation.sender_id, consultation.receiver_id)
         
-        # Simple logic: যদি sender consultation.sender_id হয় তাহলে receiver consultation.receiver_id
         if consultation.sender_id == sender_id:
             logger.debug("✓ Sender is client, receiver is attorney: %s", consultation.receiver_id)
             return consultation.receiver_id
@@ -50,15 +75,15 @@ def get_receiver_id(consultation_id, sender_id):
             return None
         
     except ConsultationRequest.DoesNotExist:
-        logger.exception("Consultation not found pk=%s", consultation_id)
+        logger.exception("✗ Consultation not found pk=%s", consultation_id)
         return None
     except Exception as e:
-        logger.exception("get_receiver_id failed: %s", e)
+        logger.exception("✗ get_receiver_id failed: %s", e)
         return None
 
 @sync_to_async
 def _save_message_with_receiver(consultation_id, sender_id, receiver_id, content):
-    """Save message"""
+    """Save message to database"""
     try:
         from attorney.models import Message
         msg = Message.objects.create(
@@ -81,9 +106,30 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         
         logger.debug("WS CONNECT consultation=%s group=%s", self.consultation_id, self.group_name)
         
+        # ✓ Extract and validate token BEFORE accepting connection
+        headers = dict(self.scope.get('headers', []))
+        auth_header = headers.get(b'authorization', b'').decode()
+        
+        if not auth_header.startswith('Bearer '):
+            logger.warning("✗ No Bearer token in Authorization header")
+            await self.close(code=4001)
+            return
+        
+        token = auth_header[7:].strip()
+        user = await get_user_from_token(token)
+        
+        if not user:
+            logger.warning("✗ Could not authenticate user from token")
+            await self.close(code=4002)
+            return
+        
+        self.user_id = user.id
+        self.user = user
+        
+        # ✓ Now add to group and accept
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
-        logger.debug("✓ WS ACCEPTED")
+        logger.debug("✓ WS ACCEPTED for user_id=%s", self.user_id)
 
     async def disconnect(self, close_code):
         """Called when WebSocket disconnects"""
@@ -104,51 +150,54 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         """Called when client sends JSON message"""
         logger.debug("WS RECEIVE_JSON content=%s", content)
         
-        # Extract message
-        message_text = content.get('content')
-        
-        # Get sender from Authorization header
-        headers = dict(self.scope.get('headers', []))
-        auth_header = headers.get(b'authorization', b'').decode()
-        
-        sender_id = None
-        if auth_header.startswith('Bearer '):
-            token = auth_header[7:].strip()  # Remove 'Bearer ' and trim spaces
-            logger.debug("Extracting user from access token...")
-            user = await get_user_from_token(token)
-            if user:
-                sender_id = user.id
-                logger.debug("✓ sender_id from token: %s", sender_id)
-            else:
-                logger.warning("✗ Could not extract user from token")
-        else:
-            logger.debug("No Bearer token in Authorization header")
-        
-        # Fallback: from payload
-        if not sender_id:
-            sender_id = content.get('user_id')
-            if sender_id:
-                logger.debug("Using fallback sender_id from payload: %s", sender_id)
-        
-        # Auto-detect receiver
-        receiver_id = content.get('receiver_id')
-        if not receiver_id and sender_id:
-            receiver_id = await get_receiver_id(self.consultation_id, sender_id)
-            if receiver_id:
-                logger.debug("✓ Auto-detected receiver_id: %s", receiver_id)
-            else:
-                logger.warning("✗ Could not auto-detect receiver_id")
-        
-        logger.debug("Final validation: message=%s sender=%s receiver=%s", 
-                     message_text, sender_id, receiver_id)
-        
-        # Validate
-        if not message_text or not sender_id or not receiver_id:
-            logger.warning("✗ VALIDATION FAILED")
-            await self.send_json({"error": f"incomplete: text={message_text}, sender={sender_id}, receiver={receiver_id}"})
+        message_text = content.get('content', '').strip()
+        if not message_text:
+            await self.send_json({"error": "Message cannot be empty"})
             return
         
-        # Send ACK
+        sender_id = self.user_id
+        
+        # ✓ Get consultation status
+        consultation = await get_consultation_details(self.consultation_id)
+        if not consultation:
+            await self.send_json({"error": "Consultation not found"})
+            return
+        
+        # ✓ Check permission
+        if sender_id != consultation['sender_id'] and sender_id != consultation['receiver_id']:
+            await self.send_json({"error": "You don't have permission to access this consultation"})
+            return
+        
+        # ✓ CHECK STATUS - যতক্ষণ accepted না হয়, কেউ message পাঠাতে পারবে না
+        if consultation['status'] != 'accepted':
+            is_attorney = sender_id == consultation['receiver_id']
+            
+            if is_attorney:
+                await self.send_json({
+                    "error": "Cannot send message. User has not yet accepted the consultation.",
+                    "status": consultation['status'],
+                    "message": "Wait for the user to accept your offer before messaging.",
+                    "can_message": False
+                })
+            else:
+                await self.send_json({
+                    "error": "Consultation not accepted yet.",
+                    "status": consultation['status'],
+                    "message": "Please wait for the attorney's response.",
+                    "can_message": False
+                })
+            return
+        
+        # ✓ Auto-detect receiver
+        receiver_id = await get_receiver_id(self.consultation_id, sender_id)
+        if not receiver_id:
+            await self.send_json({"error": "Could not determine receiver"})
+            return
+        
+        logger.debug("✓ Final validation: message=%s sender=%s receiver=%s", 
+                     message_text, sender_id, receiver_id)
+        
+        # ✓ Send ACK
         await self.send_json({
             "ack": True,
             "sender_id": sender_id,
@@ -157,10 +206,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         })
         logger.debug("✓ ACK sent")
         
-        # Save to DB
+        # ✓ Save to DB
         await _save_message_with_receiver(self.consultation_id, sender_id, receiver_id, message_text)
         
-        # Broadcast
+        # ✓ Broadcast to group
         try:
             await self.channel_layer.group_send(
                 self.group_name,
@@ -179,5 +228,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def chat_message(self, event):
         """Called when message is sent to group"""
-        logger.debug("CHAT_MESSAGE handler")
-        await self.send_json(event['message'])
+        logger.debug("✓ CHAT_MESSAGE handler called")
+        await self.send_json({
+            "type": "message",
+            "sender_id": event['message']['sender_id'],
+            "receiver_id": event['message']['receiver_id'],
+            "content": event['message']['content']
+        })
