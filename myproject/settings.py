@@ -61,7 +61,10 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="unsafe-secret-key")
 DEBUG = env.bool("DEBUG", default=True)
 
 
-ALLOWED_HOSTS = ['api.helpmespeak.app','10.10.7.19','15.236.180.222', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = ['https://*.trycloudflare.com']
+# optional if frontend calls from the tunnel domain:
+# CORS_ALLOWED_ORIGINS = ['https://<your-tunnel>.trycloudflare.com']
 
 # When developing and DEBUG=True, allow binding to 0.0.0.0 so incoming
 # requests that use that host (e.g., when you visit http://0.0.0.0:8001)
@@ -216,22 +219,24 @@ MEDIA_ROOT = BASE_DIR / "media"
 # ------------------------------
 # Email Settings (Development vs Production)
 # ------------------------------
-if DEBUG:
-    # ডেভেলপমেন্টে: ইমেইল টার্মিনালে প্রিন্ট হবে (কোনো আসল ইমেইল যাবে না)
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    print("Email backend: Console (emails will print in terminal)")
-else:
-    # প্রোডাকশনে: আসল SMTP ব্যবহার করুন (PrivateEmail.com)
-    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = env("EMAIL_HOST")
-    EMAIL_PORT = env.int("EMAIL_PORT", default=465)
-    EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=True)
-    EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
-    EMAIL_HOST_USER = env("EMAIL_HOST_USER")
-    EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
-    DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@helpmespeak.app")
+# Email config (always read from .env)
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False") == "True"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
-# 
+# ⚠️ যদি কোথাও থাকে:
+# if DEBUG:
+#     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# এটা remove করুন
+
 # ------------------------------
 # CORS
 # ------------------------------

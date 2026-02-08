@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import ConsultationRequest, Message
-from attorney.models import Event
+from attorney.models import Event, AttorneyRating
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -102,6 +103,14 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = ['id', 'title', 'description', 'date', 'time', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+class SimpleRatingSerializer(serializers.ModelSerializer):
+    rating = serializers.DecimalField(max_digits=2, decimal_places=1, min_value=Decimal('1.0'), max_value=Decimal('5.0'))
+
+    class Meta:
+        model = AttorneyRating
+        fields = ("id", "attorney", "rating", "created_at")
+        read_only_fields = ("id", "created_at")
 
 from attorney.models import ConsultationRequest
 
