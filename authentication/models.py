@@ -24,8 +24,8 @@ class User(AbstractUser):
     full_name = models.CharField(max_length=255, blank=True)
 
     # Client-specific fields
-    location = models.CharField(max_length=255, blank=True)
-    preferred_legal_area = models.CharField(max_length=255, blank=True)
+    location = models.CharField(max_length=255, blank=True, null=True)
+    preferred_legal_area = models.CharField(max_length=255, blank=True, null=True)
 
     # Authentication & Verification fields
     is_email_verified = models.BooleanField(default=False)
@@ -175,3 +175,7 @@ class AppleUserToken(models.Model):
 
     def __str__(self):
         return f"Apple Token - {self.email}"
+    
+
+
+#
