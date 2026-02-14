@@ -492,6 +492,7 @@ class UserReplyMessagesView(APIView):
                 "location": case.get("location") if isinstance(case, dict) else None,
                 "budget": case.get("budget") if isinstance(case, dict) else None,
                 "message": m.content,
+                "status": getattr(consult, "status", "pending"),  # added
                 "is_read": m.is_read,
                 "created_at": m.created_at.isoformat() if m.created_at else None
             })
