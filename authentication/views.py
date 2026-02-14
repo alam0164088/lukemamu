@@ -314,7 +314,7 @@ class LoginView(APIView):
                         "next_step": "verify_2fa_otp"
                     }, status=status.HTTP_206_PARTIAL_CONTENT)
                 refresh = RefreshToken.for_user(user)
-                lifetime = timedelta(days=30) if serializer.validated_data['remember_me'] else timedelta(days=7)
+                lifetime = timedelta(days=300) if serializer.validated_data['remember_me'] else timedelta(days=7)
                 refresh.set_exp(lifetime=lifetime)
                 refresh_token_str = str(refresh)
                 access_token_str = str(refresh.access_token)
