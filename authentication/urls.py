@@ -19,8 +19,6 @@ from .views import (
     CustomAppleLogin,
     DeleteAccountView,
     InitialAdminSignUpView,
-    UserLoginView,
-    AttorneyLoginView
 )
 
 urlpatterns = [
@@ -30,9 +28,8 @@ urlpatterns = [
     path('auth/otp/resend/', ResendOTPView.as_view(), name='resend-otp'),
     path('auth/otp/verify/', VerifyOTPView.as_view(), name='verify-otp'),
 
-    # Login & Tokens
-    path('login/', UserLoginView.as_view(), name='user-login'),
-    path('attorney-login/', AttorneyLoginView.as_view(), name='attorney-login'),
+    # Single Login & Tokens (user + attorney same endpoint)
+    path('login/', LoginView.as_view(), name='login'),
     path('auth/token/refresh/', RefreshTokenView.as_view(), name='refresh-token'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
 
@@ -53,11 +50,7 @@ urlpatterns = [
     path('auth/google/id-token/', GoogleIdTokenLogin.as_view(), name='google-id-token-login'),
     path('dj-rest-auth/apple/', CustomAppleLogin.as_view(), name='apple_login'),
     path('profile/delete/', DeleteAccountView.as_view(), name='delete-profile'),
-    
-    # for initial admin creation (one-time)
-    path('auth/admin/initial-signup/', InitialAdminSignUpView.as_view(), name='initial-admin-signup'),
 
-    # Role-based Login
-    path('login/', UserLoginView.as_view(), name='user-login'),
-    path('attorney-login/', AttorneyLoginView.as_view(), name='attorney-login'),
+    # Initial admin creation
+    path('auth/admin/initial-signup/', InitialAdminSignUpView.as_view(), name='initial-admin-signup'),
 ]

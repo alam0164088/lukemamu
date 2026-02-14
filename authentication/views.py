@@ -293,60 +293,44 @@ class LoginView(APIView):
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data['email']
-            password = serializer.validated_data['password']
-            user = User.objects.filter(email=email).first()
-            if user and user.check_password(password):
-                if not user.is_email_verified:
-                    return Response({"detail": "Email not verified."}, status=status.HTTP_403_FORBIDDEN)
-                if user.is_2fa_enabled:
-                    code = user.generate_email_verification_code()
-                    send_mail(
-                        '2FA Verification',
-                        f'Your 2FA OTP is {code}. Expires in 5 minutes.',
-                        settings.DEFAULT_FROM_EMAIL,
-                        [user.email],
-                        fail_silently=False,
-                    )
-                    return Response({
-                        "detail": "2FA required. OTP sent to email.",
-                        "next_step": "verify_2fa_otp"
-                    }, status=status.HTTP_206_PARTIAL_CONTENT)
-                refresh = RefreshToken.for_user(user)
-                lifetime = timedelta(days=300) if serializer.validated_data['remember_me'] else timedelta(days=7)
-                refresh.set_exp(lifetime=lifetime)
-                refresh_token_str = str(refresh)
-                access_token_str = str(refresh.access_token)
-                access_expires_in = 900
-                refresh_expires_in = int(refresh.lifetime.total_seconds())
+        serializer.is_valid(raise_exception=True)
 
-                Token.objects.create(
-                    user=user,
-                    email=user.email,
-                    refresh_token=refresh_token_str,
-                    access_token=access_token_str,
-                    refresh_token_expires_at=timezone.now() + timedelta(seconds=refresh_expires_in),
-                    access_token_expires_at=timezone.now() + timedelta(minutes=15)
-                )
-                logger.info(f"User logged in: {user.email}")
-                return Response({
-                    "access_token": access_token_str,
-                    "access_token_expires_in": access_expires_in,
-                    "refresh_token": refresh_token_str,
-                    "refresh_token_expires_in": refresh_expires_in,
-                    "token_type": "Bearer",
-                    "user": {
-                        "id": user.id,
-                        "email": user.email,
-                        "full_name": user.full_name,
-                        "email_verified": user.is_email_verified,
-                        "role": user.role
-                    }
-                }, status=status.HTTP_200_OK)
-            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        email = serializer.validated_data["email"]
+        password = serializer.validated_data["password"]
 
+        # আপনার backend যদি email authenticate support না করে, username=email use করতে পারেন
+        user = authenticate(request, email=email, password=password)
+        if not user:
+            user = authenticate(request, username=email, password=password)
+
+        if not user:
+            return Response({"detail": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not user.is_email_verified:
+            return Response({"detail": "Email not verified."}, status=status.HTTP_403_FORBIDDEN)
+
+        refresh = RefreshToken.for_user(user)
+
+        attorney_info = {}
+        if str(getattr(user, "role", "")).lower() == "attorney":
+            att = getattr(user, "attorney_profile", None)
+            if att:
+                attorney_info = {
+                    "designation": getattr(att, "designation", ""),
+                    "area_of_law": getattr(att, "area_of_law", ""),
+                    "experience": getattr(att, "experience", ""),
+                }
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user_id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "full_name": user.full_name,
+            "attorney_profile": attorney_info
+        }, status=status.HTTP_200_OK)
+        
 
 class RefreshTokenView(APIView):
     permission_classes = [AllowAny]
