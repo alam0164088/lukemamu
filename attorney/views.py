@@ -164,13 +164,11 @@ class ConsultationCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        # আলাদা পরীক্ষা (temporary debugging)
         serializer = ConsultationCreateSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
-            print("SERIALIZER ERRORS:", serializer.errors)
             return Response(serializer.errors, status=400)
 
-        obj = serializer.save()
+        obj = serializer.save(sender=request.user)  # important fix
         return Response(ConsultationSerializer(obj).data, status=201)
 
 class ConsultationListView(APIView):
@@ -313,7 +311,7 @@ class ConsultationAcceptView(APIView):
         try:
             consult = ConsultationRequest.objects.get(pk=pk)
         except ConsultationRequest.DoesNotExist:
-            return Response({"detail":"Consultation not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Consultation not found."}, status=status.HTTP_404_NOT_FOUND)
 
         if request.user != consult.receiver and request.user != consult.sender:
             return Response({"detail": "Not allowed. Only the receiver or the request creator may accept this offer."}, status=status.HTTP_403_FORBIDDEN)
@@ -356,6 +354,61 @@ class ConsultationAcceptView(APIView):
             "accepted_by": accepted_by,
             "consultation": ConsultationSerializer(consult).data
         }, status=status.HTTP_200_OK)
+
+class ConsultationRejectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            consult = ConsultationRequest.objects.get(pk=pk)
+        except ConsultationRequest.DoesNotExist:
+            return Response({"detail": "Consultation not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user != consult.receiver and request.user != consult.sender:
+            return Response(
+                {"detail": "Not allowed. Only the receiver or the request creator may reject this offer."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # fallback if constant না থাকে
+        reject_status = getattr(ConsultationRequest, "STATUS_REJECTED", "rejected")
+        consult.status = reject_status
+        consult.accepted_at = None
+        consult.save(update_fields=["status", "accepted_at", "updated_at"])
+
+        rejected_by = {
+            "id": request.user.id,
+            "email": getattr(request.user, "email", None),
+            "full_name": getattr(request.user, "full_name", None),
+        }
+
+        # notify via channels (optional)
+        try:
+            from asgiref.sync import async_to_sync
+            from channels.layers import get_channel_layer
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"chat_{pk}",
+                {
+                    "type": "chat.rejected",
+                    "message": {
+                        "consultation": consult.id,
+                        "status": consult.status,
+                        "rejected_by": rejected_by,
+                    },
+                },
+            )
+        except Exception:
+            pass
+
+        return Response(
+            {
+                "detail": "Consultation rejected.",
+                "rejected_by": rejected_by,
+                "consultation": ConsultationSerializer(consult).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 class MessagesListCreateView(APIView):
     permission_classes = [IsAuthenticated]
