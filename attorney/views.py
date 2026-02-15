@@ -164,11 +164,13 @@ class ConsultationCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        # আলাদা পরীক্ষা (temporary debugging)
         serializer = ConsultationCreateSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
+            print("SERIALIZER ERRORS:", serializer.errors)
             return Response(serializer.errors, status=400)
 
-        obj = serializer.save(sender=request.user)  # important fix
+        obj = serializer.save()
         return Response(ConsultationSerializer(obj).data, status=201)
 
 class ConsultationListView(APIView):

@@ -100,33 +100,40 @@ def _save_message_with_receiver(consultation_id, sender_id, receiver_id, content
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        """Called when WebSocket connects"""
         self.consultation_id = self.scope['url_route']['kwargs']['consultation_pk']
         self.group_name = f"chat_{self.consultation_id}"
-        
+
         logger.debug("WS CONNECT consultation=%s group=%s", self.consultation_id, self.group_name)
-        
-        # ✓ Extract and validate token BEFORE accepting connection
-        headers = dict(self.scope.get('headers', []))
-        auth_header = headers.get(b'authorization', b'').decode()
-        
-        if not auth_header.startswith('Bearer '):
-            logger.warning("✗ No Bearer token in Authorization header")
+
+        token = None
+
+        # 1) Try Authorization header (non-browser clients)
+        headers = dict(self.scope.get("headers", []))
+        auth_header = headers.get(b"authorization", b"").decode()
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+
+        # 2) Fallback: query string token (browser frontend)
+        if not token:
+            from urllib.parse import parse_qs
+            raw_qs = (self.scope.get("query_string") or b"").decode()
+            qs = parse_qs(raw_qs)
+            token = (qs.get("token") or [None])[0]
+
+        if not token:
+            logger.warning("✗ No token found in header or query string")
             await self.close(code=4001)
             return
-        
-        token = auth_header[7:].strip()
+
         user = await get_user_from_token(token)
-        
         if not user:
             logger.warning("✗ Could not authenticate user from token")
             await self.close(code=4002)
             return
-        
+
         self.user_id = user.id
         self.user = user
-        
-        # ✓ Now add to group and accept
+
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         logger.debug("✓ WS ACCEPTED for user_id=%s", self.user_id)
