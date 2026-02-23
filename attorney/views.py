@@ -512,47 +512,66 @@ class UserReplyMessagesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if str(getattr(request.user, "role", "")).lower() == "attorney":
-            return Response({"detail": "Only users can fetch reply messages."}, status=status.HTTP_403_FORBIDDEN)
-
+        # Remove attorney check - both users and attorneys can see their messages
+        
         qs = Message.objects.filter(
-            Q(receiver=request.user) | Q(consultation__receiver=request.user)
+            Q(receiver=request.user) | 
+            Q(consultation__receiver=request.user) | 
+            Q(consultation__sender=request.user)
         ).exclude(
             Q(sender__role__iexact="bot") |
             Q(sender__username__icontains="bot") |
             Q(sender__email__icontains="bot")
-        ).select_related("consultation", "sender", "receiver").order_by("created_at")
+        ).select_related("consultation", "sender", "receiver").order_by("-created_at")
 
-        replies = []
+        # Group messages by consultation
+        grouped = {}
         for m in qs:
             consult = m.consultation
-            case = consult.case_details if consult else {}
-            replies.append({
-                "id": m.id,
-                "consultation": consult.id if consult else None,
-                "sender": {
-                    "id": m.sender.id,
-                    "email": getattr(m.sender, "email", ""),
-                    "full_name": getattr(m.sender, "full_name", ""),
-                    "profile_image": _get_profile_image(m.sender, request)
-                },
-                "receiver": {
-                    "id": m.receiver.id,
-                    "email": getattr(m.receiver, "email", ""),
-                    "full_name": getattr(m.receiver, "full_name", ""),
-                    "profile_image": _get_profile_image(m.receiver, request)
-                },
-                "subject": getattr(consult, "subject", None),
-                "description": case.get("description") if isinstance(case, dict) else None,
-                "location": case.get("location") if isinstance(case, dict) else None,
-                "budget": case.get("budget") if isinstance(case, dict) else None,
-                "message": m.content,
-                "status": getattr(consult, "status", "pending"),  # added
-                "is_read": m.is_read,
-                "created_at": m.created_at.isoformat() if m.created_at else None
-            })
+            if not consult:
+                continue
 
-        return Response(replies, status=status.HTTP_200_OK)
+            cid = consult.id
+            case = consult.case_details if isinstance(consult.case_details, dict) else {}
+
+            if cid not in grouped:
+                grouped[cid] = {
+                    "id": cid,
+                    "consultation": cid,
+                    "sender": {
+                        "id": m.sender.id,
+                        "email": getattr(m.sender, "email", ""),
+                        "full_name": getattr(m.sender, "full_name", ""),
+                        "profile_image": _get_profile_image(m.sender, request),
+                    },
+                    "receiver": {
+                        "id": m.receiver.id,
+                        "email": getattr(m.receiver, "email", ""),
+                        "full_name": getattr(m.receiver, "full_name", ""),
+                        "profile_image": _get_profile_image(m.receiver, request),
+                    },
+                    "subject": getattr(consult, "subject", None),
+                    "description": case.get("description") if isinstance(case, dict) else None,
+                    "location": case.get("location") if isinstance(case, dict) else None,
+                    "budget": case.get("budget") if isinstance(case, dict) else None,
+                    "status": getattr(consult, "status", "pending"),
+                    "last_message": m.content,
+                    "last_message_at": m.created_at.isoformat() if m.created_at else None,
+                    "unread_count": 0,
+                }
+
+            # Count unread messages for current user in this consultation
+            if m.receiver_id == request.user.id and not m.is_read:
+                grouped[cid]["unread_count"] += 1
+
+        # Sort by latest message first
+        result = sorted(
+            grouped.values(),
+            key=lambda x: x["last_message_at"] or "",
+            reverse=True
+        )
+
+        return Response(result, status=status.HTTP_200_OK)
 
 def _get_attr(obj, names):
     for n in names:
