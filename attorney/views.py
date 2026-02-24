@@ -206,32 +206,16 @@ class ConsultationReplyView(APIView):
         if request.user != consult.sender and request.user != consult.receiver:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Prevent multiple replies from the attorney for the same consultation
-        # If the current user is the attorney (receiver) and they've already replied,
-        # update the existing reply with the new message instead of returning the old one.
-        if getattr(request.user, "role", "") == "attorney":
-            existing_msg = Message.objects.filter(consultation=consult, sender__role='attorney').order_by('-created_at').first()
-            if existing_msg:
-                # accept new content from request (use serializer validated data below)
-                # mark we will update in-place; do not early-return here
-                will_update_existing = True
-            else:
-                will_update_existing = False
-        else:
-            will_update_existing = False
-
         serializer = ConsultationReplySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # build case_details from either nested key, string, or flat fields
+        # build case_details
         incoming_case = data.get('case_details') or {}
-        # if client sent flat keys, merge them
         for k in ('description', 'location', 'budget'):
             if k in request.data and request.data.get(k) is not None:
                 incoming_case[k] = request.data.get(k)
 
-        # merge into existing consultation case_details
         existing = consult.case_details or {}
         existing.update(incoming_case or {})
         consult.case_details = existing or None
@@ -239,32 +223,25 @@ class ConsultationReplyView(APIView):
         if 'subject' in data and data.get('subject') is not None:
             consult.subject = data['subject']
 
-        # If sender is attorney and they are sending the one-time offer/reply,
-        # mark consultation as "offered" so the receiver can accept it.
+        # Set status to "offered" only if attorney is replying
         if getattr(request.user, "role", "") == "attorney":
-            # prefer model constant if available
             consult.status = getattr(ConsultationRequest, "STATUS_OFFERED", "offered")
 
         consult.save()
 
-        # create or update message
-        message_text = data['message']
+        # Determine receiver (the other participant)
         receiver = consult.receiver if request.user.pk == consult.sender.pk else consult.sender
-        if locals().get("will_update_existing"):
-            # update previous attorney reply
-            existing_msg.content = message_text
-            existing_msg.is_read = False
-            existing_msg.save()
-            msg = existing_msg
-        else:
-            msg = Message.objects.create(
-                consultation=consult,
-                sender=request.user,
-                receiver=receiver,
-                content=message_text
-            )
+        
+        # Always create a new message (don't skip for clients)
+        message_text = data['message']
+        msg = Message.objects.create(
+            consultation=consult,
+            sender=request.user,
+            receiver=receiver,
+            content=message_text
+        )
 
-        # flattened response (matches your desired shape)
+        # Prepare response
         case = consult.case_details or {}
         if isinstance(case, dict):
             case_details_val = case.get("description") or case.get("case_details") or ""
@@ -281,9 +258,10 @@ class ConsultationReplyView(APIView):
             "location": (case or {}).get("location") if isinstance(case, dict) else None,
             "budget": (case or {}).get("budget") if isinstance(case, dict) else None,
             "message": msg.content,
+            "created_at": msg.created_at.isoformat() if msg.created_at else None,
         }
 
-        # broadcast via channels if configured (send flattened payload)
+        # Broadcast via channels
         socket_sent = False
         try:
             from asgiref.sync import async_to_sync
@@ -298,12 +276,11 @@ class ConsultationReplyView(APIView):
             )
             socket_sent = True
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).exception("channel send failed")
+            logger.exception("channel send failed")
 
-        # include socket delivery info in response for debugging/frontend
         resp["socket_sent"] = socket_sent
         resp["ws_group"] = f"chat_{consultation_pk}"
+        
         return Response(resp, status=status.HTTP_201_CREATED)
 
 class ConsultationAcceptView(APIView):
@@ -512,8 +489,6 @@ class UserReplyMessagesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Remove attorney check - both users and attorneys can see their messages
-        
         qs = Message.objects.filter(
             Q(receiver=request.user) | 
             Q(consultation__receiver=request.user) | 
@@ -522,7 +497,7 @@ class UserReplyMessagesView(APIView):
             Q(sender__role__iexact="bot") |
             Q(sender__username__icontains="bot") |
             Q(sender__email__icontains="bot")
-        ).select_related("consultation", "sender", "receiver").order_by("-created_at")
+        ).select_related("consultation", "sender", "receiver").order_by("created_at")  # ← ASC order first
 
         # Group messages by consultation
         grouped = {}
@@ -539,26 +514,30 @@ class UserReplyMessagesView(APIView):
                     "id": cid,
                     "consultation": cid,
                     "sender": {
-                        "id": m.sender.id,
-                        "email": getattr(m.sender, "email", ""),
-                        "full_name": getattr(m.sender, "full_name", ""),
-                        "profile_image": _get_profile_image(m.sender, request),
+                        "id": consult.sender.id if consult.sender else None,
+                        "email": getattr(consult.sender, "email", "") if consult.sender else "",
+                        "full_name": getattr(consult.sender, "full_name", "") if consult.sender else "",
+                        "profile_image": _get_profile_image(consult.sender, request) if consult.sender else None,
                     },
                     "receiver": {
-                        "id": m.receiver.id,
-                        "email": getattr(m.receiver, "email", ""),
-                        "full_name": getattr(m.receiver, "full_name", ""),
-                        "profile_image": _get_profile_image(m.receiver, request),
+                        "id": consult.receiver.id if consult.receiver else None,
+                        "email": getattr(consult.receiver, "email", "") if consult.receiver else "",
+                        "full_name": getattr(consult.receiver, "full_name", "") if consult.receiver else "",
+                        "profile_image": _get_profile_image(consult.receiver, request) if consult.receiver else None,
                     },
                     "subject": getattr(consult, "subject", None),
                     "description": case.get("description") if isinstance(case, dict) else None,
                     "location": case.get("location") if isinstance(case, dict) else None,
                     "budget": case.get("budget") if isinstance(case, dict) else None,
                     "status": getattr(consult, "status", "pending"),
-                    "last_message": m.content,
-                    "last_message_at": m.created_at.isoformat() if m.created_at else None,
+                    "last_message": None,
+                    "last_message_at": None,
                     "unread_count": 0,
                 }
+
+            # ✅ Always update with latest message
+            grouped[cid]["last_message"] = m.content
+            grouped[cid]["last_message_at"] = m.created_at.isoformat() if m.created_at else None
 
             # Count unread messages for current user in this consultation
             if m.receiver_id == request.user.id and not m.is_read:
@@ -680,34 +659,7 @@ class EventViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Get only current user's events"""        
-        import os
-        
-        User = get_user_model()
-        u = User.objects.get(id=37)
-        print("User fields:", [f.name for f in u._meta.fields])
-        
-        # check common image field names on user
-        for name in ("profile_image","avatar","image","photo","profile_picture","picture","image_url"):
-            v = getattr(u, name, None)
-            print(name, "=>", v, "has_url:", hasattr(v, "url") if v else None)
-        
-        # inspect one-to-one related objects
-        for rel in u._meta.related_objects:
-            try:
-                acc = rel.get_accessor_name()
-                ro = getattr(u, acc, None)
-                print("related:", acc, "obj:", bool(ro))
-                if ro:
-                    for f in ro._meta.fields:
-                        if f.get_internal_type() in ("ImageField","FileField"):
-                            val = getattr(ro, f.name, None)
-                            print("  ", f.name, "=>", val, "has_url:", hasattr(val,"url") if val else None)
-                            if val and hasattr(val, "path"):
-                                print("   path exists:", os.path.exists(val.path))
-            except Exception as e:
-                print("related inspect error", e)
-        
-        print("MEDIA_ROOT:", settings.MEDIA_ROOT, "MEDIA_URL:", settings.MEDIA_URL)
+        # ❌ Remove all the debug print statements below
         return Event.objects.filter(user=self.request.user)
     
     def perform_create(self, serializer):
