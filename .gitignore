@@ -9,17 +9,49 @@ __pycache__/
 env/
 venv/
 ENV/
+.venv/
+pip-wheel-metadata/
 
-# Media files
-
-
-# Static files
+# Static & media
 staticfiles/
+media/
 
 # Django secret and environment variables
 .env
+.env.*               # e.g. .env.local, .env.production
+*.secret
+*.secrets
+
+# Ignore settings files containing secrets
+myproject/settings.py
+settings.py
+
+# Keys / certs
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+
+# Logs, caches, test artifacts
+*.log
+*.pot
+*.py[cod]
+.coverage
+coverage/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.pylint.d/
+
+# Node/npm (if any)
+node_modules/
 
 # IDE/Editor files
 .vscode/
 .idea/
-*.swp
+*.sublime-project
+*.sublime-workspace
+
+# macOS / misc
+.DS_Store
+Thumbs.db
