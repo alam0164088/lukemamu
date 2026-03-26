@@ -54,7 +54,7 @@ def _pick_attorney_obj(u):
 def _extract_attorney_data(u):
     fields = [
         "designation", "area_of_law", "bar_license_number",
-        "bio", "languages", "experience", "response_time"
+        "bio", "languages", "experience", "response_time", "tier"
     ]
     data = {}
     # 1) user model এ থাকলে নাও
@@ -157,7 +157,20 @@ def _serialize_user(u, request=None):
         data[name] = val
 
     data["profile_image"] = _get_profile_image(u, request)
-    data["attorney"] = _extract_attorney_data(u)
+
+    attorney_data = _extract_attorney_data(u)
+    if attorney_data is None and getattr(u, "role", "") == "attorney":
+        # Ensure attorney block is present for attorney users (even without profile details)
+        tier = None
+        try:
+            attorney_profile = getattr(u, "attorney_profile", None)
+            if attorney_profile is not None:
+                tier = getattr(attorney_profile, "tier", None)
+        except Exception:
+            tier = None
+        attorney_data = {"tier": tier}
+
+    data["attorney"] = attorney_data
     return data
 
 class ConsultationCreateView(APIView):

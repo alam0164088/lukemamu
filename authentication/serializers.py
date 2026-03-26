@@ -262,6 +262,43 @@ class UserProfileSerializer(serializers.ModelSerializer):
         }
 
 
+class SimpleUserProfileSerializer(serializers.ModelSerializer):
+    """Simplified serializer for admin dashboard - minimal fields only"""
+    email_verified = serializers.BooleanField(source="is_email_verified", read_only=True)
+    phone = serializers.SerializerMethodField()
+    tier = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "full_name",
+            "gender",
+            "email_verified",
+            "created_at",
+            "role",
+            "phone",
+            "tier",
+        ]
+
+    def get_phone(self, obj):
+        try:
+            return obj.profile.phone
+        except Exception:
+            return ""
+
+    def get_tier(self, obj):
+        """Get attorney tier - returns tier only if manually set, None otherwise"""
+        if obj.role == 'attorney':
+            try:
+                tier = obj.attorney_profile.tier
+                return tier  # Return whatever is there (None, one, two, etc.)
+            except Exception:
+                return None
+        return None
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

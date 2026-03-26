@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Help Me Speak</title>
+    <link rel="stylesheet" href="{% static 'css/home.css' %}">
+</head>
+<body>
+    <header>
+        <nav class="navbar">
+            <div class="container">
+                <div class="logo">cazyes</div>
+                <ul class="nav-links">
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#services">Services</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>Find Solutions to Your Legal Problems Here</h1>
+                <p>Connect with experienced lawyers and resolve your case.</p>
+                <div class="cta-buttons">
+                    <a href="/api/" class="btn btn-primary">API Documentation</a>
+                    <a href="/admin/" class="btn btn-secondary">Administration</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="services" class="services">
+            <div class="container">
+                <h2>Our Services</h2>
+                <div class="service-grid">
+                    <div class="service-card">
+                        <h3>Consultation</h3>
+                        <p>Get free consultation from experienced lawyers.</p>
+                    </div>
+                    <div class="service-card">
+                        <h3>Case Management</h3>
+                        <p>Get complete tracking and updates for your case.</p>
+                    </div>
+                    <div class="service-card">
+                        <h3>Rating System</h3>
+                        <p>View ratings and read reviews to find the best lawyers.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 Help Me Speak. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

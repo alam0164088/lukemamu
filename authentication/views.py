@@ -10,6 +10,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth import get_user_model, authenticate  # ← এখানে 'authenticate' যোগ করো
 from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import jwt
 import requests
@@ -36,6 +37,7 @@ User = get_user_model()
 # USER AUTHENTICATION VIEWS
 # =======================
 
+@method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(APIView):
     permission_classes = [AllowAny]
     def post(self, request):
@@ -195,6 +197,7 @@ class AdminUserManagementView(APIView):
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class SendOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -234,6 +237,7 @@ class SendOTPView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -287,7 +291,7 @@ class VerifyOTPView(APIView):
         return Response({"detail": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# 
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -332,6 +336,7 @@ class LoginView(APIView):
         }, status=status.HTTP_200_OK)
         
 
+@method_decorator(csrf_exempt, name='dispatch')
 class RefreshTokenView(APIView):
     permission_classes = [AllowAny]
 
@@ -360,6 +365,7 @@ class RefreshTokenView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # 
+@method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -373,6 +379,7 @@ class LogoutView(APIView):
         return Response({"message": "Logged out. Refresh token revoked."}, status=status.HTTP_200_OK)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
 
@@ -397,6 +404,7 @@ class ForgotPasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class VerifyResetOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -421,6 +429,7 @@ class VerifyResetOTPView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class ResetPasswordConfirmView(APIView):
     permission_classes = [AllowAny]
 
@@ -442,6 +451,7 @@ class ResetPasswordConfirmView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -458,6 +468,7 @@ class ChangePasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class Enable2FAView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -480,6 +491,7 @@ class Enable2FAView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class Verify2FAView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -498,6 +510,7 @@ class Verify2FAView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class ResendOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -524,6 +537,7 @@ class ResendOTPView(APIView):
 
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -802,6 +816,7 @@ from .models import Profile
 
 logger = logging.getLogger(__name__)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class DeleteAccountView(APIView):
     permission_classes = [IsAuthenticated]
 

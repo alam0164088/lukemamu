@@ -145,6 +145,13 @@ class Attorney(models.Model):
 
     Linked one-to-one with `User`. Keeps attorney metadata out of the auth table.
     """
+    TIER_CHOICES = [
+        ('one', 'Tier One'),
+        ('two', 'Tier Two'),
+        ('three', 'Tier Three'),
+        ('four', 'Tier Four'),
+    ]
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -158,6 +165,7 @@ class Attorney(models.Model):
     languages = models.CharField(max_length=255, blank=True, help_text="Comma-separated list of languages")
     experience = models.CharField(max_length=255, blank=True, help_text="Short summary like '8+ years'")
     response_time = models.CharField(max_length=128, blank=True, help_text="E.g. 'Responds in ~2 hrs'")
+    tier = models.CharField(max_length=20, choices=TIER_CHOICES, default=None, null=True, blank=True, help_text="Attorney subscription tier")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
