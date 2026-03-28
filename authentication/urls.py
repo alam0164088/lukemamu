@@ -66,3 +66,4 @@ urlpatterns = [
     path('admin/attorneys/', csrf_exempt(GetUsersByRoleView.as_view()), name='get-all-attorneys'),
     path('admin/attorneys/<int:attorney_id>/tier/', csrf_exempt(EditAttorneyTierView.as_view()), name='edit-attorney-tier'),
 ]
+# 
